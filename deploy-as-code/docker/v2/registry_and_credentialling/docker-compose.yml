@@ -2,15 +2,20 @@ version: '2.4'
 
 services:
   db:
-    image: postgres
+    image: postgres:16
     volumes:
       - ./${DB_DIR-db-data}:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh
+      - ./init-db.sql.template:/docker-entrypoint-initdb.d/init-db.sql.template
     ports:
       - '5432:5432'
     environment:
       - POSTGRES_DB=registry
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - KRATOS_DB_PASSWORD=${KRATOS_DB_PASSWORD}
+      - HYDRA_DB_PASSWORD=${HYDRA_DB_PASSWORD}
+      - KETO_DB_PASSWORD=${KETO_DB_PASSWORD}
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s
@@ -24,7 +29,12 @@ services:
     environment:
       - connectionInfo_uri=jdbc:postgresql://db:5432/registry
       - connectionInfo_username=postgres
-      - connectionInfo_password=postgres
+      - connectionInfo_password=${POSTGRES_PASSWORD}
+      # Auth — validates JWTs via Hydra JWKS
+      - oauth2_resource_uri=http://hydra:4444
+      - oauth2_resource_roles_path=ext.role
+      - oauth2_resource_email_path=ext.email
+      - registry_system_base_roles=admin
       - encryption_enabled=${ENCRYPTION_ENABLED-false}
       - encryption_health_check_url=http://encryption-service:8013/health
       - encryption_uri=http://encryption-service:8013/crypto/v1/_encrypt
@@ -40,18 +50,11 @@ services:
       - elastic_search_username=${ELASTIC_SEARCH_USERNAME-elastic}
       - elastic_search_password=${ELASTIC_SEARCH_PASSWORD}
       - search_providerName=${SEARCH_PROVIDER_NAME-dev.sunbirdrc.registry.service.NativeSearchService}
-      - sunbird_sso_realm=${KEYCLOAK_REALM-sunbird-rc}
-      - sunbird_sso_url=${sunbird_sso_url-http://keycloak:8080/auth}
-      - OAUTH2_RESOURCES_0_URI=${oauth2_resource_uri-http://keycloak:8080/auth/realms/sunbird-rc}
-      - OAUTH2_RESOURCES_0_PROPERTIES_ROLES_PATH=${oauth2_resource_roles_path-realm_access.roles}
-      - identity_provider=${identity_provider-dev.sunbirdrc.auth.keycloak.KeycloakProviderImpl}
+      - identity_provider=dev.sunbirdrc.auth.keycloak.KeycloakProviderImpl
       - idgen_enabled=${IDGEN_ENABLED-false}
       - idgen_health_check_url=http://id-gen-service:8088/egov-idgen/health
       - idgen_generate_url=http://id-gen-service:8088/egov-idgen/id/_generate
       - idgen_id_format_url=http://id-gen-service:8088/egov-idgen/id/_format/add
-      - sunbird_sso_admin_client_id=${KEYCLOAK_ADMIN_CLIENT_ID-admin-api}
-      - sunbird_sso_client_id=${KEYCLOAK_CLIENT_ID-registry-frontend}
-      - sunbird_sso_admin_client_secret=${KEYCLOAK_SECRET}
       - claims_enabled=${CLAIMS_ENABLED-false}
       - claims_url=http://claim-ms:8082
       - did_enabled=${DID_ENABLED-false}
@@ -83,14 +86,12 @@ services:
       - pdf_url=http://certificate-api:8078/api/v1/certificatePDF
       - certificate_health_check_url=http://certificate-api:8078/health
       - template_base_url=http://registry:8081/api/v1/templates/ #Looks for certificate templates for pdf copy of the signed certificate
-      - sunbird_keycloak_user_set_password=true
       - filestorage_enabled=${FILESSTORAGE_ENABLED-false}
       - filestorage_connection_url=http://file-storage:9000
-      - filestorage_access_key=admin
-      - filestorage_secret_key=12345678
+      - filestorage_access_key=${FILESTORAGE_ACCESS_KEY}
+      - filestorage_secret_key=${FILESTORAGE_SECRET_KEY}
       - filestorage_bucket_key=issuance
       - registry_base_apis_enable=false
-      - sunbird_keycloak_user_password=abcd@123
       - logging.level.root=INFO
       - enable_external_templates=true
       - async_enabled=${ASYNC_ENABLED-false}
@@ -111,7 +112,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      keycloak:
+      hydra:
         condition: service_healthy
     healthcheck:
       test:
@@ -122,39 +123,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-  keycloak:
-    image: ghcr.io/sunbird-rc/sunbird-rc-keycloak:latest
-    volumes:
-      - ./${KEYCLOAK_IMPORT_DIR-imports}:/opt/jboss/keycloak/imports
-    environment:
-      - KEYCLOAK_LOGO=https://svgshare.com/i/hCs.svg
-      - DB_VENDOR=postgres
-      - DB_ADDR=db
-      - DB_PORT=5432
-      - DB_DATABASE=registry
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - KEYCLOAK_USER=${KEYCLOAK_ADMIN_USER-admin}
-      - KEYCLOAK_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD-admin}
-      - KEYCLOAK_IMPORT=/opt/jboss/keycloak/imports/realm-export.json
-      - PROXY_ADDRESS_FORWARDING=true
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:9990/ || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 10
-    ports:
-      - '8080:8080'
-      - '9990:9990'
-    depends_on:
-      db:
-        condition: service_healthy
   claim-ms:
     image: ghcr.io/sunbird-rc/sunbird-rc-claim-ms:${RELEASE_VERSION}
     environment:
       - connectionInfo_uri=jdbc:postgresql://db:5432/registry
       - connectionInfo_username=postgres
-      - connectionInfo_password=postgres
+      - connectionInfo_password=${POSTGRES_PASSWORD}
       - sunbirdrc_url=http://registry:8081
     ports:
       - '8082:8082'
@@ -206,7 +180,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/registry
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/registry
       - VAULT_ADDR=${VAULT_ADDR}
       - VAULT_TOKEN=${VAULT_TOKEN}
       - VAULT_BASE_URL=${VAULT_BASE_URL}
@@ -233,7 +207,7 @@ services:
       identity:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/registry
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/registry
       - IDENTITY_BASE_URL=${IDENTITY_BASE_URL}
       - JWKS_URI=${JWKS_URI}
       - ENABLE_AUTH=${ENABLE_AUTH}
@@ -255,7 +229,7 @@ services:
       credential-schema:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/registry
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/registry
       - IDENTITY_BASE_URL=${IDENTITY_BASE_URL}
       - SCHEMA_BASE_URL=${SCHEMA_BASE_URL}
       - CREDENTIAL_SERVICE_BASE_URL=${CREDENTIAL_SERVICE_BASE_URL}
@@ -268,84 +242,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  file-storage:
-    image: quay.io/minio/minio
-    volumes:
-      - ${HOME}/minio/data:/data
-    environment:
-      - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=12345678
-    command: server --address 0.0.0.0:9000 --console-address 0.0.0.0:9001 /data
-    ports:
-      - '9000:9000'
-      - '9001:9001'
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
-      interval: 30s
-      timeout: 20s
-      retries: 10
-  notification-ms:
-    image: ghcr.io/sunbird-rc/sunbird-rc-notification-service:${RELEASE_VERSION}
-    ports:
-      - '8765:8765'
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'wget -nv -t1 --spider
-          http://localhost:8765/notification-service/v1/health || exit 1',
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-    environment:
-      - TRACK_NOTIFICATIONS=${TRACK_NOTIFICATIONS-false}
-      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS-kafka:9092}
-    depends_on:
-      kafka:
-        condition: service_started
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    ports:
-      - '2181:2181'
-    environment:
-      ZOOKEEPER_CLIENT_PORT: '2181'
-      ZOOKEEPER_TICK_TIME: '2000'
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    depends_on:
-      zookeeper:
-        condition: service_started
-    ports:
-      - '9092:9092'
-    environment:
-      KAFKA_BROKER_ID: '1'
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://kafka:9092,OUTSIDE://localhost:9094'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'INTERNAL:PLAINTEXT,OUTSIDE:PLAINTEXT'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
-    healthcheck:
-      test:
-        [
-          'CMD',
-          'kafka-topics',
-          '--list',
-          '--bootstrap-server',
-          'localhost:9092',
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-  context-proxy-service:
-    image: ghcr.io/sunbird-rc/sunbird-rc-context-proxy-service
-    ports:
-      - '4400:4400'
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'localhost:4400/health']
-      interval: 30s
-      timeout: 10s
-      retries: 10
   nginx:
     image: ghcr.io/sunbird-rc/sunbird-rc-nginx
     ports:
@@ -355,8 +251,10 @@ services:
         condition: service_healthy
       context-proxy-service:
         condition: service_started
-      keycloak:
-        condition: service_started
+      hydra:
+        condition: service_healthy
+      kratos:
+        condition: service_healthy
       claim-ms:
         condition: service_started
       file-storage:
@@ -366,36 +264,117 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-  redis:
-    image: redis:latest
-    ports:
-      - '6379:6379'
-  id-gen-service:
-    image: ghcr.io/sunbird-rc/id-gen-service:${RELEASE_VERSION}
-    ports:
-      - '8088:8088'
+
+  # ── Kratos ───────────────────────────────────────────────────────────────────
+  kratos-migrate:
+    image: oryd/kratos:v1.0.0
     environment:
-      spring.datasource.url: jdbc:postgresql://db:5432/registry
-      spring.flyway.baseline-on-migrate: "true"
-      autocreate.new.seq: "true"
-      idformat.from.mdms: "false"
-      egov.mdms.provider: org.egov.id.masterdata.provider.DBMasterDataProvider
-    depends_on:
-      db:
-        condition: service_healthy
-  encryption-service:
-    image: ghcr.io/sunbird-rc/encryption-service:${RELEASE_VERSION}
-    ports:
-      - '8013:8013'
-    environment:
-      server.port: 8013
-      server.servlet.context-path: /
-      spring.datasource.url: jdbc:postgresql://db:5432/registry
-      spring.flyway.url: jdbc:postgresql://db:5432/registry
-      egov.mdms.provider: org.egov.enc.masterdata.provider.DBMasterDataProvider
-      spring.flyway.baseline-on-migrate: "true"
-      management.endpoints.web.base-path: /
+      - DSN=postgres://kratos:${KRATOS_DB_PASSWORD}@db:5432/kratos?sslmode=disable
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    restart: on-failure
     depends_on:
       db:
         condition: service_healthy
 
+  kratos:
+    image: oryd/kratos:v1.0.0
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    environment:
+      - DSN=postgres://kratos:${KRATOS_DB_PASSWORD}@db:5432/kratos?sslmode=disable
+      - LOG_LEVEL=info
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    ports:
+      - '4433:4433'
+      - '4434:4434'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4433/health/alive']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: on-failure
+
+  # ── Hydra ────────────────────────────────────────────────────────────────────
+  hydra-migrate:
+    image: oryd/hydra:v2.2.0
+    environment:
+      - DSN=postgres://hydra:${HYDRA_DB_PASSWORD}@db:5432/hydra?sslmode=disable
+    command: migrate sql -e --yes
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+
+  hydra:
+    image: oryd/hydra:v2.2.0
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    environment:
+      - DSN=postgres://hydra:${HYDRA_DB_PASSWORD}@db:5432/hydra?sslmode=disable
+      - LOG_LEVEL=info
+      - SECRETS_SYSTEM=${HYDRA_SYSTEM_SECRET}
+      - SECRETS_COOKIE=${HYDRA_COOKIE_SECRET}
+      - OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT=${HYDRA_PAIRWISE_SALT}
+    volumes:
+      - ./ory/hydra:/etc/config/hydra
+    command: serve all --config /etc/config/hydra/hydra.yml --dev
+    ports:
+      - '4444:4444'
+      - '4445:4445'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4444/health/alive']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Hydra Client Bootstrap ───────────────────────────────────────────────────
+  hydra-client-init:
+    image: curlimages/curl:latest
+    depends_on:
+      hydra:
+        condition: service_healthy
+    environment:
+      - RC_CLIENT_SECRET=${RC_CLIENT_SECRET}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        echo "==> Registering rc-client OAuth2 client..."
+        CLIENT_JSON="{
+          \"client_id\":   \"rc-client\",
+          \"client_name\": \"Sunbird RC Admin\",
+          \"client_secret\": \"${RC_CLIENT_SECRET}\",
+          \"grant_types\":  [\"authorization_code\", \"refresh_token\", \"client_credentials\"],
+          \"response_types\": [\"code\"],
+          \"scope\": \"openid offline_access email profile\",
+          \"redirect_uris\": [\"http://localhost:3000/callback\", \"http://localhost:3000/\"],
+          \"post_logout_redirect_uris\": [\"http://localhost:3000/login\", \"http://localhost:3000/\"],
+          \"token_endpoint_auth_method\": \"client_secret_post\",
+          \"subject_type\": \"public\"
+        }"
+        STATUS=$$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+          -X POST http://hydra:4445/admin/clients \
+          -H "Content-Type: application/json" \
+          -d "$$CLIENT_JSON")
+        case "$$STATUS" in
+          201) echo "==> Client registered." ;;
+          409)
+            echo "==> Client already exists — updating..."
+            STATUS=$$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+              -X PUT http://hydra:4445/admin/clients/rc-client \
+              -H "Content-Type: application/json" \
+              -d "$$CLIENT_JSON")
+            [ "$$STATUS" = "200" ] && echo "==> Client updated." || { echo "==> Update FAILED (HTTP $$STATUS):"; cat /tmp/resp.json; exit 1; }
+            ;;
+          *) echo "==> FAILED (HTTP $$STATUS):"; cat /tmp/resp.json; exit 1 ;;
+        esac
+    restart: on-failure
