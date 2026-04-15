@@ -6,12 +6,12 @@
 ## System requirements
 
 - 4 Cores
-- 8 GB RAM
+- 16 GB RAM
 - Min 100 GB disk
 
 ## Prerequisites 
 
-- This guide assumes a some familiarity with basic linux commands. If not, [here](https://ubuntu.com/tutorials/command-line-for-beginners#1-overview) is a great place to start.
+- This guide assumes some familiarity with basic linux commands. If not, [here](https://ubuntu.com/tutorials/command-line-for-beginners#1-overview) is a great place to start.
 - Don't copy-paste the $ signs, they indicate that what follows is a terminal command
 
 ## Terminal emulator
@@ -29,79 +29,208 @@
 
 ## Docker Compose
 - Installation instructions can be found [here](https://docs.docker.com/compose/install/).
-- Run docker compose version in the terminal to check if docker compose has been installed correctly:
+- Run docker-compose version in the terminal to check if docker-compose has been installed correctly:
 
 ```bash
-docker compose version
+docker-compose version
 ```
 
 
 ## Installation
 
-- We have already created a .env file for basic setup. This configuration will help your setup the basic verison of registry 2.0 for issuing credentials. If you want to customize any settings of the registry you can edit the .env file or else you can go ahead with this configuration
+### 1. Configure environment variables
 
-- We are using Hashicorp vault as the keystore manager. You can know more about it [here](https://www.vaultproject.io/)
+Copy the example env file and fill in the required values:
 
-- The first step will be to start the vault using the below command 
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set the following secrets before starting any services:
+
+| Variable | Description |
+|---|---|
+| `POSTGRES_PASSWORD` | Password for the main `postgres` DB user |
+| `KRATOS_DB_PASSWORD` | Password for the `kratos` DB user |
+| `HYDRA_DB_PASSWORD` | Password for the `hydra` DB user |
+| `KETO_DB_PASSWORD` | Password for the `keto` DB user |
+| `HYDRA_SYSTEM_SECRET` | Hydra system secret — generate with `openssl rand -base64 32` |
+| `HYDRA_COOKIE_SECRET` | Hydra cookie secret — generate with `openssl rand -base64 32` |
+| `HYDRA_PAIRWISE_SALT` | Salt for OIDC pairwise subject identifiers |
+| `RC_CLIENT_SECRET` | OAuth2 client secret for `rc-client` — generate with `openssl rand -base64 32` |
+| `VAULT_TOKEN` | Root token for Hashicorp Vault — **leave blank**, auto-populated by `make compose-init` on first run |
+| `RC_ADMIN_BASE_URL` | Public base URL of the rc-admin UI (e.g. `http://localhost:3000`) |
+| `WEB_DID_BASE_URL` | Public HTTPS URL where DID documents will be hosted (e.g. `https://alice.github.io/rc-did-documents`) — see step 3 below |
+| `ISSUER_DID` | DID of the credential issuer — generated after services are running (see step 8) |
+| `SCHEMA_ID` | ID of the credential schema — generated after services are running (see step 8) |
+| `TEMPLATE_ID` | ID of the certificate template — generated after services are running (see step 8) |
+
+You can generate all three in one go:
+
+```bash
+echo "HYDRA_SYSTEM_SECRET=$(openssl rand -base64 32)"
+echo "HYDRA_COOKIE_SECRET=$(openssl rand -base64 32)"
+echo "RC_CLIENT_SECRET=$(openssl rand -base64 32)"
+```
+
+### 2. Configure ORY Kratos (OIDC provider)
+
+This setup uses [ORY Kratos](https://www.ory.sh/kratos/) for identity management and [ORY Hydra](https://www.ory.sh/hydra/) as the OAuth2/OIDC server.
+
+Edit `ory/kratos/kratos.yml` and replace the OIDC provider placeholders with your actual values:
+
+```yaml
+providers:
+  - id: cuenta-digital
+    client_id: <CLIENT_ID>       # replace with your OIDC client ID
+    client_secret: <CLIENT_SECRET>  # replace with your OIDC client secret
+    issuer_url: https://your-oidc-provider.example.com
+```
+
+Also replace the `<COOKIE_SECRET>` and `<CIPHER_SECRET>` placeholders in the `secrets` section:
+
+```yaml
+secrets:
+  cookie:
+    - <COOKIE_SECRET>
+  cipher:
+    - <CIPHER_SECRET>
+```
+
+Generate secure values with:
+
+```bash
+openssl rand -base64 32   # run once for COOKIE_SECRET
+openssl rand -base64 32   # run again for CIPHER_SECRET
+```
+
+### 3. Set up GitHub Pages for DID hosting (Optional)
+
+Digital credentials require a publicly accessible DID (Decentralized Identifier) document hosted at a stable HTTPS URL. GitHub Pages is the simplest option.
+
+**3.1 Create a public GitHub repository**
+- Go to [github.com/new](https://github.com/new)
+- Repository name: `rc-did-documents` (or any name you prefer)
+- Visibility: **Public**
+- Click **Create repository**
+
+**3.2 Enable GitHub Pages**
+- Go to repository **Settings → Pages**
+- Under **Source**, select **Deploy from a branch**
+- Branch: `main` · Folder: `/ (root)`
+- Click **Save**
+
+**3.3 Note your DID base URL**
+
+```
+https://<YOUR_GITHUB_USERNAME>.github.io/<YOUR_REPO_NAME>
+```
+
+Example: `https://alice.github.io/rc-did-documents`
+
+Set this as `WEB_DID_BASE_URL` in your `.env` file before starting services.
+
+### 4. Configure Vault
+
+- We are using [Hashicorp Vault](https://www.vaultproject.io/) as the keystore manager.
+
+### 5. Add your credential schemas
+
+Place your credential schema JSON files in the `schemas/` directory. An example schema (`Employee.json`) is provided as a reference.
+
+### 6. Start all services
 
 ```bash
 make compose-init
-
 ```
 
-- This will start the vault service. If it fails to start the vault might already be up and running.
+This command does the following in order:
 
-- Once the vault is up and running and unsealed, it will generate a set of 5 keys which can be user futher to unseal the vault and a root access token to access the vault as a default user. All these data is stored in the keys.txt. This will be generated run time.
+1. Starts the **Vault** container only and waits for it to be ready
+2. Checks Vault state:
+   - **Fresh install** — initialises Vault, generates **5 unseal keys** and a **root token**, saves them to `keys.txt`, then unseals using the first 3 keys and enables the KV v2 secrets engine at path `kv`, and auto-writes `VAULT_TOKEN` into `.env`
+   - **Already initialised + `keys.txt` exists** — unseals using existing keys from `keys.txt`, skips KV engine creation
+   - **Already initialised + `keys.txt` missing** — exits immediately with a `CRITICAL ERROR`. You must restore `keys.txt` or wipe `vault-data/` to reset (see [Reset](#reset--start-from-scratch))
+3. Starts all remaining services via `docker-compose up -d`
 
-- Create the schema files in the schemas directory. We have already provided example schemas (Official.json and Insurance.json)
+> **Keep `keys.txt` safe** — it contains the unseal keys and root token. Do not commit it to version control.
 
-### Steps to setup keycloak:
+> **Note:** Vault comes up sealed on every restart. Re-run `make compose-init` to unseal it — as long as `keys.txt` is present it will unseal without reinitialising.
 
-- Open the keycloak admin console `http://localhost:8080/auth/`
-- Goto Clients -> admin-api -> Credentials
-- Click on Regenerate Secret and copy the new value
-- Set KEYCLOAK_SECRET with the copied value in .env file
-- Add a DNS mapping in your /etc/hosts file
+> **Alternatively**, unseal manually:
+> ```bash
+> docker-compose up -d vault
+> docker-compose exec vault vault operator unseal <Unseal Key 1>
+> docker-compose exec vault vault operator unseal <Unseal Key 2>
+> docker-compose exec vault vault operator unseal <Unseal Key 3>
+> docker-compose up -d
+> ```
 
-```bash 
-
-cat /etc/hosts
-
-nano /etc/hosts
-
-```
-- edit this file and add a new mapping ex : (127.0.0.1	keycloak)
-
-- Start all the services:
-
-```bash
-docker-compose up -d
-
-```
-
-- Check if all the services are started using 
+### 7. Verify services are running
 
 ```bash
 docker-compose ps
-
 ```
 
-- Access the registry swagger json `http://localhost:8081/api/docs/swagger.json`
+### 8. Access the registry
 
-- We have added a postman collection for registry 2.0 in the postmanCollection/ directory.
+- Registry Swagger: `http://localhost:8081/api/docs/swagger.json`
+- Hydra public endpoint: `http://localhost:4444`
+- Kratos public endpoint: `http://localhost:4433`
+- rc-admin UI: `http://localhost:4000`
 
+### 9. Generate Issuer DID, Schema and Template
 
-- To start vault from scratch you can use this commands. Remove the existing volumes vault-data and db-data, and stop all the running docker containers 
-- Use this commands only when you want to start the vault service from scratch. 
+Once all services are running, use the provided Postman collection to generate the required identifiers.
 
-``` bash 
+> **Postman collection:** _Link to be added_
 
-sudo docker compose down 
+The collection will guide you through:
 
-sudo rm -rf db-data/ vault-data/
+**Step 9.1 — Generate Issuer DID**
+- Run the **Generate DID** request in the collection
+- Copy the returned DID (e.g. `did:rcw:abc123...`)
+- The identity service will also generate a DID document — download it
 
+**Step 9.2 — Host the DID document on GitHub Pages**
+- Add the DID document file to your `rc-did-documents` GitHub repository
+- The file must be accessible at:
+  ```
+  https://<YOUR_GITHUB_USERNAME>.github.io/<YOUR_REPO_NAME>/<DID_IDENTIFIER>
+  ```
+- Commit and push — GitHub Pages will publish it automatically within a few minutes
+
+**Step 9.3 — Generate Credential Schema**
+- Run the **Create Schema** request in the collection
+- Copy the returned `schemaId`
+
+**Step 9.4 — Generate Certificate Template**
+- Run the **Create Template** request in the collection
+- Copy the returned `templateId`
+
+**Step 9.5 — Update `.env` and restart**
+
+Set the values in your `.env` file:
+
+```env
+ISSUER_DID=did:rcw:<your-issuer-did>
+SCHEMA_ID=<your-schema-id>
+TEMPLATE_ID=<your-template-id>
 ```
 
-## Postman_Collection 
+Then restart the rc-admin service to pick up the changes:
 
-https://api.postman.com/collections/13315057-7e45f3d2-7232-4787-8cb7-72708bb122c1?access_key=PMAT-01HS0FYYFHFKJRP6AX1A0ETYBZ
+```bash
+docker-compose up -d rc-admin
+```
+
+## Reset / start from scratch
+
+Use these commands only when you want to wipe all data and restart:
+
+```bash
+docker-compose down
+sudo rm -rf db-data/ vault-data/ keys.txt
+```
+
+> **Important:** Always delete `keys.txt` together with `vault-data/`. If `vault-data/` is removed but `keys.txt` is kept (or vice versa), the script will detect a mismatch and exit with a `CRITICAL ERROR` on the next run.

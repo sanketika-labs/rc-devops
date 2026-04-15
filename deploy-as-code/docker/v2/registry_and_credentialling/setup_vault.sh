@@ -37,32 +37,45 @@ until check_vault_status; do
 done
 
 
-if [[ $vault_status == *"Initialized     true"* ]]; then
-    echo "Vault is initialized already. Unsealing if it is not unsealed"
+# Remove colors for reliable matching
+clean_vault_status=$(echo "$vault_status" | sed 's/\x1B\[[0-9;]*[JKmsu]//g')
+
+if echo "$clean_vault_status" | grep -q "Initialized.*true"; then
+    echo "Vault is initialized."
+    # Check if keys.txt exists and has content (size > 0)
+    if [ -s "keys.txt" ]; then
+        echo "keys.txt found. Unsealing..."
+    else
+        echo "CRITICAL ERROR: Vault is initialized (locked) but keys.txt is missing or empty!"
+        echo "Unable to unseal. You must restore keys.txt or wipe vault-data to reset."
+        exit 1
+    fi
 else
-  # keys contains ansi escape sequences, remove them if any
-  docker-compose -f "$COMPOSE_FILE" exec -T "$SERVICE_NAME" vault operator init > ansi-keys.txt
-  sed 's/\x1B\[[0-9;]*[JKmsu]//g' < ansi-keys.txt  > keys.txt
+    echo "Vault is NOT initialized. Starting fresh setup..."
+    # keys contains ansi escape sequences, remove them if any
+    docker-compose -f "$COMPOSE_FILE" exec -T "$SERVICE_NAME" vault operator init > ansi-keys.txt
+    sed 's/\x1B\[[0-9;]*[JKmsu]//g' < ansi-keys.txt  > keys.txt
 fi
 
-sed -n 's/Unseal Key [1-1]\+: \(.*\)/\1/p' keys.txt > parsed-key.txt
+sed -n 's/Unseal Key 1: \(.*\)/\1/p' keys.txt > parsed-key.txt
 key=$(cat parsed-key.txt)
 docker-compose -f "$COMPOSE_FILE" exec -T "$SERVICE_NAME" vault operator unseal "$key" < /dev/null
 
-sed -n 's/Unseal Key [2-2]\+: \(.*\)/\1/p' keys.txt > parsed-key.txt
+sed -n 's/Unseal Key 2: \(.*\)/\1/p' keys.txt > parsed-key.txt
 key=$(cat parsed-key.txt)
 docker-compose -f "$COMPOSE_FILE" exec -T "$SERVICE_NAME" vault operator unseal "$key" < /dev/null
 
-sed -n 's/Unseal Key [3-3]\+: \(.*\)/\1/p' keys.txt > parsed-key.txt
+sed -n 's/Unseal Key 3: \(.*\)/\1/p' keys.txt > parsed-key.txt
 key=$(cat parsed-key.txt)
 docker-compose -f "$COMPOSE_FILE" exec -T "$SERVICE_NAME" vault operator unseal "$key" < /dev/null
 
 root_token=$(sed -n 's/Initial Root Token: \(.*\)/\1/p' keys.txt | tr -dc '[:print:]')
 
-if [[ $vault_status == *"Initialized     true"* ]]; then
+if echo "$clean_vault_status" | grep -q "Initialized.*true"; then
     echo "Vault is initialized already. Skipping creating a KV engine"
 else
-  sed -i "s/VAULT_TOKEN=.*/VAULT_TOKEN=$root_token/" ".env"
+  # Use a temporary file for compatibility with both GNU and BSD sed
+  sed "s/VAULT_TOKEN=.*/VAULT_TOKEN=$root_token/" ".env" > ".env.tmp" && mv ".env.tmp" ".env"
   docker-compose -f "$COMPOSE_FILE" exec -e VAULT_TOKEN=$root_token -T "$SERVICE_NAME" vault secrets enable -path=kv kv-v2
 fi
 
