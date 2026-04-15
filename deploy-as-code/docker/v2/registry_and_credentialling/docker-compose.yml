@@ -5,8 +5,7 @@ services:
     image: postgres:16
     volumes:
       - ./${DB_DIR-db-data}:/var/lib/postgresql/data
-      - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh
-      - ./init-db.sql.template:/docker-entrypoint-initdb.d/init-db.sql.template
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     ports:
       - '5432:5432'
     environment:
@@ -123,29 +122,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-  claim-ms:
-    image: ghcr.io/sunbird-rc/sunbird-rc-claim-ms:${RELEASE_VERSION}
-    environment:
-      - connectionInfo_uri=jdbc:postgresql://db:5432/registry
-      - connectionInfo_username=postgres
-      - connectionInfo_password=${POSTGRES_PASSWORD}
-      - sunbirdrc_url=http://registry:8081
-    ports:
-      - '8082:8082'
-    depends_on:
-      db:
-        condition: service_started
-      registry:
-        condition: service_started
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'wget -nv -t1 --spider http://localhost:8082/health || exit 1',
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 10
   vault:
     image: vault:1.13.3
     restart: always
@@ -242,29 +218,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  nginx:
-    image: ghcr.io/sunbird-rc/sunbird-rc-nginx
-    ports:
-      - '80:80'
-    depends_on:
-      registry:
-        condition: service_healthy
-      context-proxy-service:
-        condition: service_started
-      hydra:
-        condition: service_healthy
-      kratos:
-        condition: service_healthy
-      claim-ms:
-        condition: service_started
-      file-storage:
-        condition: service_started
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'localhost:80']
-      interval: 30s
-      timeout: 10s
-      retries: 10
-
   # ── Kratos ───────────────────────────────────────────────────────────────────
   kratos-migrate:
     image: oryd/kratos:v1.0.0
@@ -282,7 +235,7 @@ services:
     image: oryd/kratos:v1.0.0
     depends_on:
       kratos-migrate:
-        condition: service_completed_successfully
+        condition: service_started
       db:
         condition: service_healthy
     environment:
@@ -316,7 +269,7 @@ services:
     image: oryd/hydra:v2.2.0
     depends_on:
       hydra-migrate:
-        condition: service_completed_successfully
+        condition: service_started
       db:
         condition: service_healthy
     environment:
@@ -378,3 +331,61 @@ services:
           *) echo "==> FAILED (HTTP $$STATUS):"; cat /tmp/resp.json; exit 1 ;;
         esac
     restart: on-failure
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - '80:80'
+    volumes:
+      - ./imports/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      registry:
+        condition: service_healthy
+      hydra:
+        condition: service_healthy
+      kratos:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'localhost:80']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+  rc-admin:
+    image: sanketikahub/rc-admin:v0.7
+    ports:
+      - '4000:8080'
+    depends_on:
+      registry:
+        condition: service_healthy
+      hydra:
+        condition: service_healthy
+      kratos:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+
+      # ── Frontend config (served via GET /config, read by browser at startup) ──
+      VITE_API_BASE_URL: ${RC_ADMIN_BASE_URL}
+      VITE_OAUTH2_CLIENT_ID: rc-client
+      VITE_OAUTH2_REDIRECT_URI: ${RC_ADMIN_BASE_URL}/callback
+      VITE_ORY_HYDRA_PUBLIC: ${RC_ADMIN_BASE_URL}/hydra
+      VITE_ORY_KRATOS_PUBLIC: ${RC_ADMIN_BASE_URL}/kratos
+      VITE_EXT_OIDC_CLIENT_ID: ${EXT_OIDC_CLIENT_ID}
+      VITE_EXT_OIDC_REDIRECT_URI: ${RC_ADMIN_BASE_URL}/callback
+      VITE_ISSUER_DID: ${ISSUER_DID-}
+      VITE_SCHEMA_ID: ${SCHEMA_ID-}
+      VITE_SCHEMA_VERSION: ${SCHEMA_VERSION-}
+      VITE_TEMPLATE_ID: ${TEMPLATE_ID-}
+
+      # ── Proxy targets (internal Docker network — not visible to browser) ──────
+      ORY_HYDRA_PUBLIC_URL: http://hydra:4444
+      ORY_HYDRA_ADMIN_URL: http://hydra:4445
+      ORY_KRATOS_PUBLIC_URL: http://kratos:4433
+      API_BASE_URL: http://registry:8081
+      CREDENTIAL_SERVICE_URL: http://credential:3000
+      EXT_OIDC_BASE_URL: ${EXT_OIDC_BASE_URL}
+
+      # ── Secrets (server-side only, never sent to browser) ────────────────────
+      OAUTH2_CLIENT_SECRET: ${RC_CLIENT_SECRET}
+      EXT_OIDC_CLIENT_SECRET: ${EXT_OIDC_CLIENT_SECRET}

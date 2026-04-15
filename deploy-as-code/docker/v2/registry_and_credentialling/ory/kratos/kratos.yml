@@ -1,0 +1,142 @@
+version: v1.0.0
+
+dsn: memory
+
+# ── Server ─────────────────────────────────────────────────────────────────────
+serve:
+  public:
+    base_url: http://localhost:4433/
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:5173
+        - http://localhost:3000
+        - http://localhost:4455
+        - http://localhost:5555
+      allowed_methods:
+        - POST
+        - GET
+        - PUT
+        - PATCH
+        - DELETE
+      allowed_headers:
+        - Authorization
+        - Content-Type
+        - X-Session-Token
+        - X-CSRF-Token
+      exposed_headers:
+        - Content-Type
+  admin:
+    base_url: http://kratos:4434/
+
+# ── Self-Service Flows ─────────────────────────────────────────────────────────
+selfservice:
+  default_browser_return_url: http://localhost:3000/
+
+  allowed_return_urls:
+    - http://localhost:3000
+    - http://localhost:3000/
+    - http://localhost:3000/login
+    - http://localhost:5555
+    - http://localhost:4455
+    - https://registro.digital.gob.do
+    - https://registro.digital.gob.do/
+    - https://registro.digital.gob.do/login
+
+  methods:
+    password:
+      enabled: false
+    oidc:
+      enabled: true
+      config:
+        providers:
+          - id: cuenta-digital
+            provider: generic
+            client_id: <CLIENT_ID>
+            client_secret: <CLIENT_SECRET>
+            issuer_url: https://cuenta.digital.gob.do
+            scope:
+              - openid
+              - email
+              - profile
+            mapper_url: file:///etc/config/kratos/oidc.cuenta.jsonnet
+    totp:
+      enabled: false
+    lookup_secret:
+      enabled: false
+    link:
+      enabled: false
+    code:
+      enabled: false
+
+  flows:
+    error:
+      ui_url: http://localhost:4455/error
+
+    settings:
+      ui_url: http://localhost:4455/settings
+      lifespan: 10m
+      after:
+        default_browser_return_url: http://localhost:3000/
+
+    recovery:
+      enabled: false
+
+    verification:
+      enabled: true
+      ui_url: http://localhost:4455/verification
+      after:
+        default_browser_return_url: http://localhost:3000/
+
+    logout:
+      after:
+        default_browser_return_url: https://registro.digital.gob.do/login
+
+    login:
+      ui_url: https://cuenta.digital.gob.do/ui/login
+      lifespan: 10m
+      after:
+        default_browser_return_url: http://localhost:3000/
+
+    registration:
+      ui_url: https://cuenta.digital.gob.do/ui/registration
+      lifespan: 10m
+      after:
+        default_browser_return_url: http://localhost:3000/
+
+# ── Identity Schema ────────────────────────────────────────────────────────────
+identity:
+  default_schema_id: default
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+# ── Secrets ────────────────────────────────────────────────────────────────────
+secrets:
+  cookie:
+    - <COOKIE_SECRET>
+  cipher:
+    - <CIPHER_SECRET>
+
+# ── Courier (SMTP required by schema even when unused) ────────────────────────
+courier:
+  smtp:
+    connection_uri: smtp://test:test@mailslurper:1025/?skip_ssl_verify=true
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    cost: 8
+
+session:
+  whoami:
+    required_aal: aal1
+
+log:
+  level: debug
+  format: text
+  leak_sensitive_values: false
+
