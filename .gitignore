@@ -1,2 +1,7 @@
 .idea
 .env
+.DS_Store
+deploy-as-code/.DS_Store
+deploy-as-code/docker/.DS_Store
+deploy-as-code/docker/v2/.DS_Store
+deploy-as-code/docker/v2/registry_and_credentialling/.DS_Store
