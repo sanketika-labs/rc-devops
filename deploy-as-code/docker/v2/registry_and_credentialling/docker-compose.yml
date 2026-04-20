@@ -362,7 +362,7 @@ services:
       timeout: 10s
       retries: 10
   rc-admin:
-    image: sanketikahub/rc-admin:v0.9
+    image: sanketikahub/rc-admin:v0.10
     ports:
       - '4000:8080'
     depends_on:
