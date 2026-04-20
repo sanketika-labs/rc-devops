@@ -241,6 +241,7 @@ services:
     environment:
       - DSN=postgres://kratos:${KRATOS_DB_PASSWORD}@db:5432/kratos?sslmode=disable
       - LOG_LEVEL=info
+      - RC_ADMIN_BASE_URL=${RC_ADMIN_BASE_URL}
       - SERVE_PUBLIC_BASE_URL=${RC_ADMIN_BASE_URL}/kratos/
       - SELFSERVICE_DEFAULT_BROWSER_RETURN_URL=${RC_ADMIN_BASE_URL}/
       - SELFSERVICE_FLOWS_ERROR_UI_URL=${RC_ADMIN_BASE_URL}/error
@@ -281,9 +282,13 @@ services:
     environment:
       - DSN=postgres://hydra:${HYDRA_DB_PASSWORD}@db:5432/hydra?sslmode=disable
       - LOG_LEVEL=info
+      - RC_ADMIN_BASE_URL=${RC_ADMIN_BASE_URL}
       - SECRETS_SYSTEM=${HYDRA_SYSTEM_SECRET}
       - SECRETS_COOKIE=${HYDRA_COOKIE_SECRET}
       - OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT=${HYDRA_PAIRWISE_SALT}
+      - URLS_LOGIN=${RC_ADMIN_BASE_URL}/login
+      - URLS_CONSENT=${RC_ADMIN_BASE_URL}/consent
+      - URLS_LOGOUT=${RC_ADMIN_BASE_URL}/logout
     volumes:
       - ./ory/hydra:/etc/config/hydra
     command: serve all --config /etc/config/hydra/hydra.yml --dev

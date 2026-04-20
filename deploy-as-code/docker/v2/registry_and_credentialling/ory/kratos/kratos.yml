@@ -37,6 +37,9 @@ selfservice:
     - http://localhost:3000
     - http://localhost:3000/
     - http://localhost:3000/login
+    - ${RC_ADMIN_BASE_URL}
+    - ${RC_ADMIN_BASE_URL}/
+    - ${RC_ADMIN_BASE_URL}/login
     - http://localhost:5555
     - http://localhost:4455
     - https://registro.digital.gob.do
