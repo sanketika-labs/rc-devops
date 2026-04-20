@@ -241,6 +241,12 @@ services:
     environment:
       - DSN=postgres://kratos:${KRATOS_DB_PASSWORD}@db:5432/kratos?sslmode=disable
       - LOG_LEVEL=info
+      - SERVE_PUBLIC_BASE_URL=${RC_ADMIN_BASE_URL}/kratos/
+      - SELFSERVICE_DEFAULT_BROWSER_RETURN_URL=${RC_ADMIN_BASE_URL}/
+      - SELFSERVICE_FLOWS_ERROR_UI_URL=${RC_ADMIN_BASE_URL}/error
+      - SELFSERVICE_FLOWS_LOGOUT_AFTER_DEFAULT_BROWSER_RETURN_URL=${RC_ADMIN_BASE_URL}/login
+      - SELFSERVICE_FLOWS_LOGIN_UI_URL=${EXT_OIDC_BASE_URL}/ui/login
+      - SELFSERVICE_FLOWS_REGISTRATION_UI_URL=${EXT_OIDC_BASE_URL}/ui/registration
     volumes:
       - ./ory/kratos:/etc/config/kratos
     command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
@@ -335,7 +341,7 @@ services:
   nginx:
     image: nginx:latest
     ports:
-      - '80:80'
+      - '3000:80'
     volumes:
       - ./imports/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
@@ -351,9 +357,9 @@ services:
       timeout: 10s
       retries: 10
   rc-admin:
-    image: sanketikahub/rc-admin:v0.7
-    ports:
-      - '4000:8080'
+    image: sanketikahub/rc-admin:v0.8
+    # ports:
+    #   - '4000:8080'
     depends_on:
       registry:
         condition: service_healthy

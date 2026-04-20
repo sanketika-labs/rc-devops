@@ -5,7 +5,7 @@ dsn: memory
 # ── Server ─────────────────────────────────────────────────────────────────────
 serve:
   public:
-    base_url: http://localhost:4433/
+    # base_url: http://localhost:4433/
     cors:
       enabled: true
       allowed_origins:
@@ -31,7 +31,7 @@ serve:
 
 # ── Self-Service Flows ─────────────────────────────────────────────────────────
 selfservice:
-  default_browser_return_url: http://localhost:3000/
+  # default_browser_return_url: http://localhost:3000/
 
   allowed_return_urls:
     - http://localhost:3000
@@ -70,39 +70,39 @@ selfservice:
       enabled: false
 
   flows:
-    error:
-      ui_url: http://localhost:4455/error
+    # error:
+    #   ui_url: http://localhost:4455/error
 
-    settings:
-      ui_url: http://localhost:4455/settings
-      lifespan: 10m
-      after:
-        default_browser_return_url: http://localhost:3000/
+    # settings:
+    #   ui_url: http://localhost:4455/settings
+    #   lifespan: 10m
+    #   after:
+    #     default_browser_return_url: http://localhost:3000/
 
     recovery:
       enabled: false
 
-    verification:
-      enabled: true
-      ui_url: http://localhost:4455/verification
-      after:
-        default_browser_return_url: http://localhost:3000/
+    # verification:
+    #   enabled: true
+    #   ui_url: http://localhost:4455/verification
+    #   after:
+    #     default_browser_return_url: http://localhost:3000/
 
-    logout:
-      after:
-        default_browser_return_url: https://registro.digital.gob.do/login
+    # logout:
+    #   after:
+    #     default_browser_return_url: https://registro.digital.gob.do/login
 
     login:
-      ui_url: https://cuenta.digital.gob.do/ui/login
+      # ui_url: https://cuenta.digital.gob.do/ui/login
       lifespan: 10m
-      after:
-        default_browser_return_url: http://localhost:3000/
+      # after:
+      #   default_browser_return_url: http://localhost:3000/
 
     registration:
-      ui_url: https://cuenta.digital.gob.do/ui/registration
+      # ui_url: https://cuenta.digital.gob.do/ui/registration
       lifespan: 10m
-      after:
-        default_browser_return_url: http://localhost:3000/
+      # after:
+      #   default_browser_return_url: http://localhost:3000/
 
 # ── Identity Schema ────────────────────────────────────────────────────────────
 identity:
@@ -134,6 +134,10 @@ hashers:
 session:
   whoami:
     required_aal: aal1
+  cookie:
+    domain: localhost
+    path: /
+    same_site: Lax
 
 log:
   level: debug
