@@ -36,7 +36,7 @@ curl -s -X POST http://{{host}}/api/v1/Employee/invite \
   }'
 ```
 
-Please update <<EMAIL>> with the admin email. The role field **must** be "admin". Replace `personalIdentification` with the admin’s real cédula—this is the identifier used for SSO login matching.
+Please update `<<EMAIL>>` with the admin email. The role field **must** be "admin". Replace `personalIdentification` with the admin’s real cédula—this is the identifier used for SSO login matching.
 
 ---
 
