@@ -9,7 +9,7 @@
 #   --dry-run            Validate rows without making API calls
 #   --no-credentials     Create employees only, skip credential issuance
 #   --skip-rows N        Skip first N data rows (resume after interruption)
-#   --token TOKEN        Bearer token (if authentication required)
+#   --session SESSION_ID JSESSIONID cookie value (creates one record per employee instead of two)
 #   --registry-url URL   Registry base URL (default: http://localhost:8081)
 #   --credential-url URL Credential service URL (default: http://localhost:3001)
 #   --issuer-did DID     Issuer DID (default: from .env ISSUER_DID)
@@ -45,7 +45,7 @@ DEFAULT_CREDENTIAL_URL="${CREDENTIAL_URL:-http://localhost:3001}"
 DRY_RUN=false
 NO_CREDENTIALS=false
 SKIP_ROWS=0
-TOKEN=""
+SESSION_ID="${JSESSIONID:-}"
 INPUT_FILE="$DEFAULT_FILE"
 REGISTRY_URL="$DEFAULT_REGISTRY_URL"
 CREDENTIAL_URL="$DEFAULT_CREDENTIAL_URL"
@@ -67,7 +67,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)        DRY_RUN=true;        shift   ;;
         --no-credentials) NO_CREDENTIALS=true; shift   ;;
         --skip-rows)      SKIP_ROWS="$2";      shift 2 ;;
-        --token)          TOKEN="$2";          shift 2 ;;
+        --session)        SESSION_ID="$2";     shift 2 ;;
         --registry-url)   REGISTRY_URL="$2";   shift 2 ;;
         --credential-url) CREDENTIAL_URL="$2"; shift 2 ;;
         --issuer-did)     ISSUER_DID="$2";     shift 2 ;;
@@ -173,7 +173,7 @@ VC_CONTEXT='[
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
-TOTAL=$(( $(wc -l < "$INPUT_FILE") - 1 ))
+TOTAL=$(awk 'END{print NR-1}' "$INPUT_FILE")
 echo "Loading CSV: $INPUT_FILE ..."
 echo "  $TOTAL data rows, ${#HEADERS[@]} columns: ${HEADERS[*]}"
 echo ""
@@ -207,8 +207,14 @@ while IFS=',' read -r -a FIELDS; do
     EXIT_DATE="${EXIT_DATE:0:10}"
 
     if [[ -z "$CEDULA" ]]; then
-        echo "[PARSE ERR row $ROW_NUM] Missing PersonalIdentification (cedula)"
-        PARSE_ERR=$(( PARSE_ERR + 1 ))
+        # Silently skip blank lines (e.g., the sentinel newline added to handle
+        # CSV files with no trailing newline on the last row).
+        if [[ -n "${FIELDS[*]// /}" ]]; then
+            echo "[PARSE ERR row $ROW_NUM] Missing PersonalIdentification (cedula)"
+            PARSE_ERR=$(( PARSE_ERR + 1 ))
+        else
+            DATA_ROW=$(( DATA_ROW - 1 ))
+        fi
         continue
     fi
 
@@ -220,7 +226,7 @@ while IFS=',' read -r -a FIELDS; do
         continue
     fi
 
-    # Build employee JSON
+    # Build employee JSON (flat — /invite endpoint expects no wrapper)
     EMP_JSON=$(jq -nc \
         --arg cedula    "$CEDULA" \
         --arg type      "${TYPE:-Cedula}" \
@@ -231,7 +237,7 @@ while IFS=',' read -r -a FIELDS; do
         --arg status    "$STATUS_VAL" \
         --arg salary    "$SALARY" \
         --arg admission "$ADMISSION" \
-        '{Employee:{
+        '{
             personalIdentification: $cedula,
             typeIdentification: $type,
             fullName: $name,
@@ -242,25 +248,33 @@ while IFS=',' read -r -a FIELDS; do
             salary: $salary,
             admissionDate: $admission,
             statusName: $status
-        }}')
+        }')
 
     if [[ -n "$EXIT_DATE" && "$EXIT_DATE" != "NULL" && "$EXIT_DATE" != "NONE" ]]; then
-        EMP_JSON=$(echo "$EMP_JSON" | jq --arg exit "$EXIT_DATE" '.Employee.contractExpiration = $exit')
+        EMP_JSON=$(echo "$EMP_JSON" | jq --arg exit "$EXIT_DATE" '.contractExpiration = $exit')
     fi
 
-    # POST employee
-    if [[ -n "$TOKEN" ]]; then
-        INVITE_URL="$REGISTRY_URL/api/v1/Employee"
-        RESP=$(curl -s -w "\n%{http_code}" -X POST "$INVITE_URL" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $TOKEN" \
-            -d "$EMP_JSON" 2>/dev/null)
-    else
-        INVITE_URL="$REGISTRY_URL/api/v1/Employee/invite"
-        RESP=$(curl -s -w "\n%{http_code}" -X POST "$INVITE_URL" \
-            -H "Content-Type: application/json" \
-            -d "$EMP_JSON" 2>/dev/null)
+    # Check for existing employee before creating to handle re-runs safely
+    _COOKIE_ARGS=()
+    [[ -n "$SESSION_ID" ]] && _COOKIE_ARGS=(-H "Cookie: JSESSIONID=$SESSION_ID")
+    EXIST_RESP=$(curl -s -X POST "$REGISTRY_URL/api/v1/Employee/search" \
+        -H "Content-Type: application/json" \
+        "${_COOKIE_ARGS[@]}" \
+        -d "{\"filters\":{\"personalIdentification\":{\"eq\":\"$CEDULA\"}}}" 2>/dev/null)
+    EXIST_COUNT=$(echo "$EXIST_RESP" | jq -r '.totalCount // 0' 2>/dev/null)
+    if [[ "${EXIST_COUNT:-0}" -gt 0 ]]; then
+        echo "[SKIP $ROW_NUM/$((TOTAL+1))] $CEDULA already exists"
+        SKIPPED=$(( SKIPPED + 1 ))
+        continue
     fi
+
+    # POST employee via invite endpoint
+    # When SESSION_ID is provided the request is authenticated — creates one record per employee.
+    # Without SESSION_ID the invite endpoint creates two records (Employee + invite claim entity).
+    RESP=$(curl -s -w "\n%{http_code}" -X POST "$REGISTRY_URL/api/v1/Employee/invite" \
+        -H "Content-Type: application/json" \
+        "${_COOKIE_ARGS[@]}" \
+        -d "$EMP_JSON" 2>/dev/null)
 
     HTTP_CODE=$(echo "$RESP" | tail -1)
     BODY=$(echo "$RESP" | head -n -1)
@@ -343,7 +357,7 @@ while IFS=',' read -r -a FIELDS; do
 
     sleep 0.05
 
-done < <(tail -n +2 "$INPUT_FILE")
+done < <(tail -n +2 "$INPUT_FILE"; echo)
 
 # ---------------------------------------------------------------------------
 # Summary

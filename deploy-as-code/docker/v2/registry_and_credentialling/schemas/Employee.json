@@ -65,12 +65,11 @@
     },
     "_osConfig": {
         "uniqueIndexFields": [
-            "email"
+            "personalIdentification"
         ],
         "ownershipAttributes": [
             {
-                "email": "/email",
-                "userId": "/email"
+                "personalIdentification": "/personalIdentification"
             }
         ],
         "privateFields": [
@@ -124,6 +123,7 @@
                                 "@version": 1.1,
                                 "@protected": true,
                                 "name": "schema:Text",
+                                "email": "schema:email",
                                 "personalIdentification": "schema:Text",
                                 "documentType": "schema:Text",
                                 "position": "schema:Text",
@@ -140,10 +140,12 @@
             "type": [
                 "VerifiableCredential"
             ],
-            "issuanceDate": "2021-08-27T10:57:57.237Z",
+            "issuanceDate": "{{issuanceDate}}",
+            "expirationDate": "2099-12-31T23:59:59.999Z",
             "credentialSubject": {
                 "type": "Employee",
                 "name": "{{fullName}}",
+                "email": "{{email}}",
                 "personalIdentification": "{{personalIdentification}}",
                 "documentType": "{{typeIdentification}}",
                 "position": "{{positionName}}",
