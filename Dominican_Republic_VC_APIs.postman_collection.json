@@ -1,0 +1,138 @@
+{
+  "info": {
+    "_postman_id": "ba54ae94-9bb7-41f7-aeec-f5cf8f268c39",
+    "name": "Dominican Republic VC APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "2756860"
+  },
+  "item": [
+    {
+      "name": "Get Credential By ID",
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "accept": true
+        }
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text",
+            "disabled": true
+          },
+          {
+            "key": "templateId",
+            "value": "{{template_id}}",
+            "type": "text"
+          },
+          {
+            "key": "Accept",
+            "value": "application/pdf",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{host}}/credential/credentials/{{credential_id}}",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "credential",
+            "credentials",
+            "{{credential_id}}"
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "Get Credential By ID Copy",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "templateId",
+                "value": "clj6oic5i0000iz4olldotf9g",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{CREDENTIAL_BASE_URL}}/credentials/did:cbse:da64a0a9-b036-45e6-aad9-b70afe12b56f",
+              "host": [
+                "{{CREDENTIAL_BASE_URL}}"
+              ],
+              "path": [
+                "credentials",
+                "did:cbse:da64a0a9-b036-45e6-aad9-b70afe12b56f"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Content-Length",
+              "value": "1738"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Date",
+              "value": "Fri, 14 Jul 2023 07:28:43 GMT"
+            },
+            {
+              "key": "Vary",
+              "value": "Origin"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"id\": \"did:cbse:da64a0a9-b036-45e6-aad9-b70afe12b56f\",\n    \"type\": [\n        \"VerifiableCredential\",\n        \"UniversityDegreeCredential\"\n    ],\n    \"proof\": {\n        \"type\": \"Ed25519Signature2020\",\n        \"created\": \"2023-07-14T07:27:28.267Z\",\n        \"proofValue\": \"eyJhbGciOiJFUzI1NksifQ.IntcInZjXCI6e1wiQGNvbnRleHRcIjpbXCJodHRwczovL3d3dy53My5vcmcvMjAxOC9jcmVkZW50aWFscy92MVwiLFwiaHR0cHM6Ly93d3cudzMub3JnLzIwMTgvY3JlZGVudGlhbHMvZXhhbXBsZXMvdjFcIl0sXCJ0eXBlXCI6W1wiVmVyaWZpYWJsZUNyZWRlbnRpYWxcIixcIlVuaXZlcnNpdHlEZWdyZWVDcmVkZW50aWFsXCJdLFwiY3JlZGVudGlhbFN1YmplY3RcIjp7XCJncmFkZVwiOlwiOS4yM1wiLFwicHJvZ3JhbW1lXCI6XCJCLlRlY2hcIixcImNlcnRpZnlpbmdJbnN0aXR1dGVcIjpcIklJSVQgU29uZXBhdFwiLFwiZXZhbHVhdGluZ0luc3RpdHV0ZVwiOlwiTklUIEt1cnVrc2hldHJhXCJ9fSxcIm9wdGlvbnNcIjp7XCJjcmVhdGVkXCI6XCIyMDIwLTA0LTAyVDE4OjQ4OjM2WlwiLFwiY3JlZGVudGlhbFN0YXR1c1wiOntcInR5cGVcIjpcIlJldm9jYXRpb25MaXN0MjAyMFN0YXR1c1wifX0sXCJzdWJcIjpcImRpZDpyY3c6NmI5ZDdiMzEtYmM3Zi00NTRhLWJlMzAtYjZjNzQ0N2IxY2ZmXCIsXCJqdGlcIjpcImRpZDpjYnNlOmRhNjRhMGE5LWIwMzYtNDVlNi1hYWQ5LWI3MGFmZTEyYjU2ZlwiLFwibmJmXCI6MTY3NTY4NDU4NyxcImV4cFwiOjE2NzU4NTczODcsXCJpc3NcIjpcImRpZDpyY3c6NmI5ZDdiMzEtYmM3Zi00NTRhLWJlMzAtYjZjNzQ0N2IxY2ZmXCJ9Ig.WWHcwP0AM5ECkf3gmpnUisp55PZQ_IZdpzXE6r2l-aNt63QjBFq2CPYfDP0ycXgU3pLCp_V8qW1ZD68NqBO6Tw\",\n        \"proofPurpose\": \"assertionMethod\",\n        \"verificationMethod\": \"did:rcw:6b9d7b31-bc7f-454a-be30-b6c7447b1cff\"\n    },\n    \"issuer\": \"did:rcw:6b9d7b31-bc7f-454a-be30-b6c7447b1cff\",\n    \"@context\": [\n        \"https://www.w3.org/2018/credentials/v1\",\n        \"https://www.w3.org/2018/credentials/examples/v1\"\n    ],\n    \"issuanceDate\": \"2023-02-06T11:56:27.259Z\",\n    \"expirationDate\": \"2023-02-08T11:56:27.259Z\",\n    \"credentialSubject\": {\n        \"id\": \"did:rcw:6b9d7b31-bc7f-454a-be30-b6c7447b1cff\",\n        \"grade\": \"9.23\",\n        \"programme\": \"B.Tech\",\n        \"certifyingInstitute\": \"IIIT Sonepat\",\n        \"evaluatingInstitute\": \"NIT Kurukshetra\"\n    }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Verify Credential",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Token",
+            "value": "YOUR_API_KEY",
+            "disabled": true
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          }
+        ],
+        "url": {
+          "raw": "{{host}}/credential/credentials/{{credential_id}}/verify",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "credential",
+            "credentials",
+            "{{credential_id}}",
+            "verify"
+          ]
+        },
+        "description": "Generated from cURL: curl -L \\\n  --url 'https://sunbirdrc.dev/api/v1/credentials/{id}/verify' \\\n  --header 'Token: YOUR_API_KEY' \\\n  --header 'Accept: */*'"
+      },
+      "response": []
+    }
+  ]
+}
